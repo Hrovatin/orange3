@@ -16,6 +16,7 @@ from Orange.widgets.widget import Input, Output
 
 # Maximum number of PCA components that we can set in the widget
 MAX_COMPONENTS = 100
+LINE_NAMES = ["component variance", "cumulative variance"]
 
 
 class OWPCA(widget.OWWidget):
@@ -30,6 +31,7 @@ class OWPCA(widget.OWWidget):
 
     class Outputs:
         transformed_data = Output("Transformed Data", Table, replaces=["Transformed data"])
+        data = Output("Data", Table, default=True)
         components = Output("Components", Table)
         pca = Output("PCA", PCA, dynamic=False)
 
@@ -83,13 +85,13 @@ class OWPCA(widget.OWWidget):
         self.variance_spin.setSuffix("%")
 
         form.addRow("Components:", self.components_spin)
-        form.addRow("Variance covered:", self.variance_spin)
+        form.addRow("Explained variance:", self.variance_spin)
 
         # Options
         self.options_box = gui.vBox(self.controlArea, "Options")
         self.normalize_box = gui.checkBox(
             self.options_box, self, "normalize",
-            "Normalize data", callback=self._update_normalize
+            "Normalize variables", callback=self._update_normalize
         )
 
         self.maxp_spin = gui.spin(
@@ -179,6 +181,7 @@ class OWPCA(widget.OWWidget):
 
     def clear_outputs(self):
         self.Outputs.transformed_data.send(None)
+        self.Outputs.data.send(None)
         self.Outputs.components.send(None)
         self.Outputs.pca.send(self._pca_projector)
 
@@ -194,7 +197,7 @@ class OWPCA(widget.OWWidget):
 
         self.plot.update(
             numpy.arange(1, p+1), [explained_ratio[:p], explained[:p]],
-            [Qt.red, Qt.darkYellow], cutpoint_x=cutpos)
+            [Qt.red, Qt.darkYellow], cutpoint_x=cutpos, names=LINE_NAMES)
 
         self._update_axis()
 
@@ -285,7 +288,7 @@ class OWPCA(widget.OWWidget):
         axis.setTicks([[(i, str(i)) for i in range(1, p + 1, d)]])
 
     def commit(self):
-        transformed = components = None
+        transformed = data = components = None
         if self._pca is not None:
             if self._transformed is None:
                 # Compute the full transform (MAX_COMPONENTS components) once.
@@ -310,9 +313,18 @@ class OWPCA(widget.OWWidget):
                                metas=metas)
             components.name = 'components'
 
+            data_dom = Domain(
+                self.data.domain.attributes,
+                self.data.domain.class_vars,
+                self.data.domain.metas + domain.attributes)
+            data = Table.from_numpy(
+                data_dom, self.data.X, self.data.Y,
+                numpy.hstack((self.data.metas, transformed.X)))
+
         self._pca_projector.component = self.ncomponents
         self.Outputs.transformed_data.send(transformed)
         self.Outputs.components.send(components)
+        self.Outputs.data.send(data)
         self.Outputs.pca.send(self._pca_projector)
 
     def send_report(self):
