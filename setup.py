@@ -25,13 +25,18 @@ try:
 except ImportError:
     have_sphinx = False
 
-from distutils.command.build_ext import build_ext
-from distutils.command import install_data, sdist, config, build
+from distutils.command import install_data, sdist
+try:
 
+    from numpy.distutils.command.build_ext import build_ext
+    from numpy.distutils.command import config, build
+except ImportError:
+    from distutils.command.build_ext import build_ext
+    from distutils.command import config, build
 
 NAME = 'Orange3'
 
-VERSION = '3.24.0'
+VERSION = '3.25.0'
 ISRELEASED = False
 # full version identifier including a git revision identifier for development
 # build/releases (this is filled/updated in `write_version_py`)
@@ -203,13 +208,14 @@ PACKAGE_DATA = {
                             "icons/paintdata/*.svg"],
     "Orange.widgets.data.tests": ["origin1/*.tab",
                                   "origin2/*.tab",
-                                  "*.txt"],
+                                  "*.txt", "*.tab"],
     "Orange.widgets.evaluate": ["icons/*.svg"],
     "Orange.widgets.model": ["icons/*.svg"],
     "Orange.widgets.visualize": ["icons/*.svg"],
     "Orange.widgets.unsupervised": ["icons/*.svg"],
     "Orange.widgets.utils": ["_webview/*.js"],
     "Orange.tests": ["xlsx_files/*.xlsx", "datasets/*.tab",
+                     "xlsx_files/*.xls",
                      "datasets/*.basket", "datasets/*.csv",
                      "datasets/*.pkl", "datasets/*.pkl.gz"]
 }
