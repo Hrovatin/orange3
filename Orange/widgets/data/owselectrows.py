@@ -72,8 +72,8 @@ class SelectRowsContextHandler(DomainContextHandler):
         return value
 
     def match(self, context, domain, attrs, metas):
-        if (attrs, metas) == (context.attributes, context.metas):
-            return self.PERFECT_MATCH
+        #if (attrs, metas) == (context.attributes, context.metas):
+         #   return self.PERFECT_MATCH
 
         conditions = context.values["conditions"]
         all_vars = attrs
