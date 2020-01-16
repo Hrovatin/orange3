@@ -237,7 +237,8 @@ class DomainContextHandler(ContextHandler):
         matches.append((0, 0))
         matched, available = [sum(m) for m in zip(*matches)]
 
-        return matched / available if available else 0.1
+        #return matched / available if available else 0.1
+        return 0.5
 
     def match_list(self, setting, value, context, attrs, metas):
         """Match a list of values with the given context.
