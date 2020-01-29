@@ -877,7 +877,7 @@ class OWHeatMap(widget.OWWidget):
         matrix = None
         if need_dist:
             data = Orange.distance._preprocess(data)
-            matrix = Orange.distance.PearsonR(data, axis=0)
+            matrix = Orange.distance.Euclidean(data, axis=0)
             # nan values break clustering below
             matrix = np.nan_to_num(matrix)
 
