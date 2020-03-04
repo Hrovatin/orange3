@@ -1,5 +1,6 @@
 # Test methods with long descriptive names can omit docstrings
 # pylint: disable=missing-docstring
+# pylint: disable=protected-access
 
 import sys
 import math
@@ -33,11 +34,10 @@ def is_on_path(name):
     -------
     found : bool
     """
-    for loader, name_, ispkg in pkgutil.iter_modules(sys.path):
+    for _, name_, _ in pkgutil.iter_modules(sys.path):
         if name == name_:
             return True
-    else:
-        return False
+    return False
 
 
 # noinspection PyPep8Naming,PyUnresolvedReferences
@@ -175,6 +175,20 @@ class TestDiscreteVariable(VariableTest):
         self.assertTrue(math.isnan(var.to_val(None)))
         self.assertEqual(var.to_val(1), 1)
 
+    def test_val_from_str_add(self):
+        var = DiscreteVariable.make("a", values=["F", "M"])
+        self.assertTrue(math.isnan(var.val_from_str_add(None)))
+        self.assertEqual(var.val_from_str_add("M"), 1)
+        self.assertEqual(var.val_from_str_add("F"), 0)
+        self.assertEqual(var.values, ["F", "M"])
+        self.assertEqual(var.val_from_str_add("N"), 2)
+        self.assertEqual(var.values, ["F", "M", "N"])
+        self.assertEqual(var._value_index, {"F": 0, "M": 1, "N": 2})
+        self.assertEqual(var.val_from_str_add("M"), 1)
+        self.assertEqual(var.val_from_str_add("F"), 0)
+        self.assertEqual(var.val_from_str_add("N"), 2)
+
+
     def test_repr(self):
         var = DiscreteVariable.make("a", values=["F", "M"])
         self.assertEqual(
@@ -194,6 +208,12 @@ class TestDiscreteVariable(VariableTest):
         self.assertRaises(TypeError, DiscreteVariable, "foo", values=["a", 42])
         a = DiscreteVariable("foo", values=["a", "b", "c"])
         self.assertRaises(TypeError, a.add_value, 42)
+
+    def test_no_duplicated_values(self):
+        a = DiscreteVariable("foo", values=["a", "b", "c"])
+        a.add_value("b")
+        self.assertEqual(list(a.values), ["a", "b", "c"])
+        self.assertEqual(list(a._value_index), ["a", "b", "c"])
 
     def test_unpickle(self):
         d1 = DiscreteVariable("A", values=["two", "one"])
@@ -248,12 +268,15 @@ class TestDiscreteVariable(VariableTest):
 
         arr_list = list(arr)
         self.assertIsNot(mapper(arr_list), arr_list)
-        self.assertTrue(all(x == y or (x != x and y != y) for x, y in zip(
-            mapper(arr_list), [2, 2, 1, np.nan, 2, np.nan, np.nan])))
+        self.assertTrue(
+            all(x == y or (np.isnan(x) and np.isnan(y))
+                for x, y in zip(mapper(arr_list),
+                                [2, 2, 1, np.nan, 2, np.nan, np.nan])))
 
-        self.assertTrue(x == y or (x != x and y != y) for x, y in zip(
-            mapper(tuple(arr)),
-            (2, 2, 1, np.nan, 2, np.nan, np.nan)))
+        self.assertTrue(
+            x == y or (np.isnan(x) and np.isnan(y))
+            for x, y in zip(mapper(tuple(arr)),
+                            (2, 2, 1, np.nan, 2, np.nan, np.nan)))
 
         self.assertRaises(ValueError, mapper, object())
 
@@ -365,7 +388,8 @@ class TestDiscreteVariable(VariableTest):
 
     def varcls_modified(self, name):
         var = super().varcls_modified(name)
-        var.values = ["A", "B"]
+        var.add_value("A")
+        var.add_value("B")
         var.ordered = True
         return var
 
