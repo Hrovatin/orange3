@@ -10,7 +10,7 @@ from Orange.preprocess import transformation
 from Orange.widgets.data import owcontinuize
 from Orange.widgets.data.owcontinuize import OWContinuize
 from Orange.widgets.tests.base import WidgetTest
-from orangewidget.widget import StateInfo
+from Orange.widgets.utils.state_summary import format_summary_details
 
 
 class TestOWContinuize(WidgetTest):
@@ -48,9 +48,11 @@ class TestOWContinuize(WidgetTest):
         output_sum = self.widget.info.set_output_summary = Mock()
 
         self.send_signal(self.widget.Inputs.data, data)
-        input_sum.assert_called_with(int(StateInfo.format_number(len(data))))
+        input_sum.assert_called_with(len(data),
+                                     format_summary_details(data))
         output = self.get_output(self.widget.Outputs.data)
-        output_sum.assert_called_with(int(StateInfo.format_number(len(output))))
+        output_sum.assert_called_with(len(output),
+                                      format_summary_details(output))
 
         input_sum.reset_mock()
         output_sum.reset_mock()
@@ -224,7 +226,7 @@ class TestOWContinuize(WidgetTest):
 
 class TestOWContinuizeUtils(unittest.TestCase):
     def test_dummy_coding_zero_based(self):
-        var = DiscreteVariable("foo", values=list("abc"))
+        var = DiscreteVariable("foo", values=tuple("abc"))
 
         varb, varc = owcontinuize.dummy_coding(var)
 
@@ -239,7 +241,7 @@ class TestOWContinuizeUtils(unittest.TestCase):
         self.assertIs(varc.compute_value.variable, var)
 
     def test_dummy_coding_base_value(self):
-        var = DiscreteVariable("foo", values=list("abc"))
+        var = DiscreteVariable("foo", values=tuple("abc"))
 
         varb, varc = owcontinuize.dummy_coding(var, base_value=0)
 
@@ -260,7 +262,7 @@ class TestOWContinuizeUtils(unittest.TestCase):
         self.assertEqual(varc.compute_value.value, 2)
 
     def test_one_hot_coding(self):
-        var = DiscreteVariable("foo", values=list("abc"))
+        var = DiscreteVariable("foo", values=tuple("abc"))
 
         new_vars = owcontinuize.one_hot_coding(var)
         for i, (c, nvar) in enumerate(zip("abc", new_vars)):
