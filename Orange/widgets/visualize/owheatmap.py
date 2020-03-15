@@ -640,7 +640,7 @@ class OWHeatMap(widget.OWWidget):
                 need_dist = cluster is None or (ordered and cluster_ord is None)
                 if need_dist:
                     subset = data[row.indices]
-                    matrix = Orange.distance.Euclidean(subset)
+                    matrix = Orange.distance.PearsonR(subset)
 
                 if cluster is None:
                     assert len(matrix) < self.MaxClustering
