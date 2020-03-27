@@ -21,6 +21,7 @@ from Orange.widgets.utils.annotated_data import (
 )
 from Orange.widgets.utils.plot import OWPlotGUI
 from Orange.widgets.utils.sql import check_sql_input
+from Orange.widgets.utils.state_summary import format_summary_details
 from Orange.widgets.visualize.owscatterplotgraph import OWScatterPlotBase
 from Orange.widgets.visualize.utils.component import OWGraphWithAnchors
 from Orange.widgets.widget import OWWidget, Input, Output, Msg
@@ -482,12 +483,14 @@ class OWDataProjectionWidget(OWProjectionWidgetBase, openclass=True):
                 self.Warning.subset_not_subset()
 
     def set_input_summary(self, data):
-        summary = str(len(data)) if data else self.info.NoInput
-        self.info.set_input_summary(summary)
+        summary = len(data) if data else self.info.NoInput
+        detail = format_summary_details(data) if data else ""
+        self.info.set_input_summary(summary, detail)
 
     def set_output_summary(self, data):
-        summary = str(len(data)) if data else self.info.NoOutput
-        self.info.set_output_summary(summary)
+        summary = len(data) if data else self.info.NoOutput
+        detail = format_summary_details(data) if data else ""
+        self.info.set_output_summary(summary, detail)
 
     def get_subset_mask(self):
         if not self.subset_indices:
@@ -704,10 +707,18 @@ class OWAnchorProjectionWidget(OWDataProjectionWidget, openclass=True):
     def _get_projection_data(self):
         if self.data is None or self.projection is None:
             return None
+        proposed = [a.name for a in self.projection.domain.attributes]
+        names = get_unique_names(self.data.domain, proposed)
+
+        if proposed != names:
+            attributes = tuple([attr.copy(name=name) for name, attr in
+                                zip(names, self.projection.domain.attributes)])
+        else:
+            attributes = self.projection.domain.attributes
         return self.data.transform(
             Domain(self.data.domain.attributes,
                    self.data.domain.class_vars,
-                   self.data.domain.metas + self.projection.domain.attributes))
+                   self.data.domain.metas + attributes))
 
     def commit(self):
         super().commit()
