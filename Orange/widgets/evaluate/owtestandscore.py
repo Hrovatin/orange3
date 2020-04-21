@@ -20,7 +20,7 @@ from AnyQt import QtGui
 from AnyQt.QtCore import Qt, QSize, QThread
 from AnyQt.QtCore import pyqtSlot as Slot
 from AnyQt.QtGui import QStandardItem, QDoubleValidator
-from AnyQt.QtWidgets import QHeaderView, QTableWidget, QLabel
+from AnyQt.QtWidgets import QHeaderView, QTableWidget, QLabel, QApplication
 
 from Orange.base import Learner
 import Orange.classification
@@ -114,7 +114,7 @@ Try.register = lambda cls: raise_(TypeError())
 
 class State(enum.Enum):
     """
-    OWTestLearner's runtime state.
+    OWTestAndScore's runtime state.
     """
     #: No or insufficient input (i.e. no data or no learners)
     Waiting = "Waiting"
@@ -126,12 +126,13 @@ class State(enum.Enum):
     Cancelled = "Cancelled"
 
 
-class OWTestLearners(OWWidget):
+class OWTestAndScore(OWWidget):
     name = "Test and Score"
     description = "Cross-validation accuracy estimation."
     icon = "icons/TestLearners1.svg"
     priority = 100
     keywords = ['Cross Validation', 'CV']
+    replaces = ["Orange.widgets.evaluate.owtestlearners.OWTestLearners"]
 
     class Inputs:
         train_data = Input("Data", Table, default=True)
@@ -254,7 +255,8 @@ class OWTestLearners(OWWidget):
             order=DomainModel.METAS, valid_types=DiscreteVariable)
         self.features_combo = gui.comboBox(
             ibox, self, "fold_feature", model=self.feature_model,
-            orientation=Qt.Horizontal, callback=self.fold_feature_changed)
+            orientation=Qt.Horizontal, searchable=True,
+            callback=self.fold_feature_changed)
 
         gui.appendRadioButton(rbox, "Random sampling")
         ibox = gui.indentedBox(rbox)
@@ -280,8 +282,9 @@ class OWTestLearners(OWWidget):
         self.cbox = gui.vBox(self.controlArea, "Target Class")
         self.class_selection_combo = gui.comboBox(
             self.cbox, self, "class_selection", items=[],
-            sendSelectedValue=True, callback=self._on_target_class_changed,
-            contentsLength=8)
+            sendSelectedValue=True, contentsLength=8, searchable=True,
+            callback=self._on_target_class_changed
+        )
 
         self.modcompbox = box = gui.vBox(self.controlArea, "Model Comparison")
         gui.comboBox(
@@ -345,10 +348,10 @@ class OWTestLearners(OWWidget):
                 self.fold_feature = self.feature_model[0]
         enabled = bool(self.feature_model)
         self.controls.resampling.buttons[
-            OWTestLearners.FeatureFold].setEnabled(enabled)
+            OWTestAndScore.FeatureFold].setEnabled(enabled)
         self.features_combo.setEnabled(enabled)
-        if self.resampling == OWTestLearners.FeatureFold and not enabled:
-            self.resampling = OWTestLearners.KFold
+        if self.resampling == OWTestAndScore.FeatureFold and not enabled:
+            self.resampling = OWTestAndScore.KFold
 
     @Inputs.learner
     def set_learner(self, learner, key):
@@ -428,7 +431,7 @@ class OWTestLearners(OWWidget):
             self._update_class_selection()
             self.openContext(data.domain)
             if self.fold_feature_selected and bool(self.feature_model):
-                self.resampling = OWTestLearners.FeatureFold
+                self.resampling = OWTestAndScore.FeatureFold
         self._invalidate()
 
     @Inputs.test_data
@@ -471,7 +474,7 @@ class OWTestLearners(OWWidget):
             self.Warning.missing_data.clear()
 
         self.test_data = data
-        if self.resampling == OWTestLearners.TestOnTest:
+        if self.resampling == OWTestAndScore.TestOnTest:
             self._invalidate()
 
     def _which_missing_data(self):
@@ -533,26 +536,26 @@ class OWTestLearners(OWWidget):
             self.__update()
 
     def kfold_changed(self):
-        self.resampling = OWTestLearners.KFold
+        self.resampling = OWTestAndScore.KFold
         self._param_changed()
 
     def fold_feature_changed(self):
-        self.resampling = OWTestLearners.FeatureFold
+        self.resampling = OWTestAndScore.FeatureFold
         self._param_changed()
 
     def shuffle_split_changed(self):
-        self.resampling = OWTestLearners.ShuffleSplit
+        self.resampling = OWTestAndScore.ShuffleSplit
         self._param_changed()
 
     def _param_changed(self):
-        self.modcompbox.setEnabled(self.resampling == OWTestLearners.KFold)
+        self.modcompbox.setEnabled(self.resampling == OWTestAndScore.KFold)
         self._update_view_enabled()
         self._invalidate()
         self.__update()
 
     def _update_view_enabled(self):
         self.comparison_table.setEnabled(
-            self.resampling == OWTestLearners.KFold
+            self.resampling == OWTestAndScore.KFold
             and len(self.learners) > 1
             and self.data is not None)
         self.score_table.view.setEnabled(
@@ -661,7 +664,7 @@ class OWTestLearners(OWWidget):
             return
         names = [learner_name(slot.learner) for slot in slots]
         self._set_comparison_headers(names)
-        if self.resampling == OWTestLearners.KFold:
+        if self.resampling == OWTestAndScore.KFold:
             scores = self._scores_by_folds(slots)
             self._fill_table(names, scores)
 
@@ -790,7 +793,7 @@ class OWTestLearners(OWWidget):
     def _invalidate(self, which=None):
         self.cancel()
         self.fold_feature_selected = \
-            self.resampling == OWTestLearners.FeatureFold
+            self.resampling == OWTestAndScore.FeatureFold
         # Invalidate learner results for `which` input keys
         # (if None then all learner results are invalidated)
         if which is None:
@@ -912,14 +915,14 @@ class OWTestLearners(OWWidget):
             self.__state = State.Waiting
             self.commit()
             return
-        if self.resampling == OWTestLearners.KFold and \
+        if self.resampling == OWTestAndScore.KFold and \
                 len(self.data) < self.NFolds[self.n_folds]:
             self.Error.too_many_folds()
             self.__state = State.Waiting
             self.commit()
             return
 
-        elif self.resampling == OWTestLearners.TestOnTest:
+        elif self.resampling == OWTestAndScore.TestOnTest:
             if self.test_data is None:
                 if not self.Error.test_data_empty.is_shown():
                     self.Warning.test_data_missing()
@@ -947,30 +950,30 @@ class OWTestLearners(OWWidget):
         # learners bellow)
         learners_c = [copy.deepcopy(learner) for learner in learners]
 
-        if self.resampling == OWTestLearners.TestOnTest:
+        if self.resampling == OWTestAndScore.TestOnTest:
             test_f = partial(
                 Orange.evaluation.TestOnTestData(
                     store_data=True, store_models=True),
                 self.data, self.test_data, learners_c, self.preprocessor
             )
         else:
-            if self.resampling == OWTestLearners.KFold:
+            if self.resampling == OWTestAndScore.KFold:
                 sampler = Orange.evaluation.CrossValidation(
                     k=self.NFolds[self.n_folds],
                     random_state=rstate)
-            elif self.resampling == OWTestLearners.FeatureFold:
+            elif self.resampling == OWTestAndScore.FeatureFold:
                 sampler = Orange.evaluation.CrossValidationFeature(
                     feature=self.fold_feature)
-            elif self.resampling == OWTestLearners.LeaveOneOut:
+            elif self.resampling == OWTestAndScore.LeaveOneOut:
                 sampler = Orange.evaluation.LeaveOneOut()
-            elif self.resampling == OWTestLearners.ShuffleSplit:
+            elif self.resampling == OWTestAndScore.ShuffleSplit:
                 sampler = Orange.evaluation.ShuffleSplit(
                     n_resamples=self.NRepeats[self.n_repeats],
                     train_size=self.SampleSizes[self.sample_size] / 100,
                     test_size=None,
                     stratified=self.shuffle_stratified,
                     random_state=rstate)
-            elif self.resampling == OWTestLearners.TestOnTrain:
+            elif self.resampling == OWTestAndScore.TestOnTrain:
                 sampler = Orange.evaluation.TestOnTrainingData(
                     store_models=True)
             else:
@@ -1084,6 +1087,8 @@ class OWTestLearners(OWWidget):
             task.cancel()
             task.progress_changed.disconnect(self.setProgressValue)
             task.watcher.finished.disconnect(self.__task_complete)
+            add_task_to_dispose_queue(task)
+
             self.progressBarFinished()
             self.setStatusMessage("")
 
@@ -1091,6 +1096,15 @@ class OWTestLearners(OWWidget):
         self.cancel()
         self.__executor.shutdown(True)
         super().onDeleteWidget()
+
+
+def add_task_to_dispose_queue(task: TaskState):
+    # transfer ownership of task to Qt, and delete it after completion
+    # all other signals from task should be disconnected.
+    assert task.parent() is None
+    app = QApplication.instance()
+    task.setParent(app)
+    task.watcher.finished.connect(task.deleteLater)
 
 
 class UserInterrupt(BaseException):
@@ -1184,7 +1198,7 @@ if __name__ == "__main__":  # pragma: no cover
                          Orange.regression.KNNRegressionLearner(),
                          Orange.regression.RidgeRegressionLearner()]
 
-    WidgetPreview(OWTestLearners).run(
+    WidgetPreview(OWTestAndScore).run(
         set_train_data=preview_data,
         set_test_data=preview_data,
         set_learner=[(learner, i) for i, learner in enumerate(prev_learners)]

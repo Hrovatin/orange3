@@ -395,3 +395,22 @@ class TestOWPythagorasTree(WidgetTest, WidgetOutputsTestMixin):
         # The domain is still the same, so restore the depth limit from before
         self.send_signal(self.widget.Inputs.tree, forest.trees[1])
         self.assertEqual(self.widget.ptree._depth_limit, 1)
+
+    def test_context(self):
+        iris_tree = TreeLearner()(Table("iris"))
+        self.send_signal(self.widget.Inputs.tree, self.titanic)
+        self.widget.target_class_index = 1
+
+        self.send_signal(self.widget.Inputs.tree, iris_tree)
+        self.assertEqual(0, self.widget.target_class_index)
+
+        self.widget.target_class_index = 2
+        self.send_signal(self.widget.Inputs.tree, self.titanic)
+        self.assertEqual(1, self.widget.target_class_index)
+
+        self.send_signal(self.widget.Inputs.tree, iris_tree)
+        self.assertEqual(2, self.widget.target_class_index)
+
+
+if __name__ == "__main__":
+    unittest.main()

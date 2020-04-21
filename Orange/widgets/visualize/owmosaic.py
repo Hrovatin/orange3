@@ -27,6 +27,7 @@ from Orange.widgets.utils.annotated_data import (create_annotated_table,
                                                  ANNOTATED_DATA_SIGNAL_NAME)
 from Orange.widgets.utils.itemmodels import DomainModel
 from Orange.widgets.utils.widgetpreview import WidgetPreview
+from Orange.widgets.utils.state_summary import format_summary_details
 from Orange.widgets.visualize.utils import (
     CanvasText, CanvasRectangle, ViewWithPress, VizRankDialog)
 from Orange.widgets.visualize.utils.plotutils import wrap_legend_items
@@ -324,13 +325,16 @@ class OWMosaicDisplay(OWWidget):
 
         self.areas = []
 
-        self.canvas = QGraphicsScene()
+        self.canvas = QGraphicsScene(self)
         self.canvas_view = ViewWithPress(
             self.canvas, handler=self.clear_selection)
         self.mainArea.layout().addWidget(self.canvas_view)
         self.canvas_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.canvas_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.canvas_view.setRenderHint(QPainter.Antialiasing)
+
+        self.info.set_input_summary(self.info.NoInput)
+        self.info.set_output_summary(self.info.NoOutput)
 
         box = gui.vBox(self.controlArea, box=True)
         self.model_1 = DomainModel(
@@ -342,6 +346,7 @@ class OWMosaicDisplay(OWWidget):
             gui.comboBox(
                 box, self, value="variable{}".format(i),
                 orientation=Qt.Horizontal, contentsLength=12,
+                searchable=True,
                 callback=self.attr_changed,
                 model=self.model_1 if i == 1 else self.model_234)
             for i in range(1, 5)]
@@ -355,6 +360,7 @@ class OWMosaicDisplay(OWWidget):
         self.cb_attr_color = gui.comboBox(
             box2, self, value="variable_color",
             orientation=Qt.Horizontal, contentsLength=12, labelWidth=50,
+            searchable=True,
             callback=self.set_color_data, model=self.color_model)
         self.bar_button = gui.checkBox(
             box2, self, 'use_boxes', label='Compare with total',
@@ -440,8 +446,10 @@ class OWMosaicDisplay(OWWidget):
         if self.data is None:
             self.discrete_data = None
             self.init_combos(None)
+            self.info.set_input_summary(self.info.NoInput)
             return
 
+        self.info.set_input_summary(len(data),format_summary_details(data))
         self.init_combos(self.data)
         self.openContext(self.data)
 
@@ -516,6 +524,7 @@ class OWMosaicDisplay(OWWidget):
             self.Outputs.selected_data.send(None)
             self.Outputs.annotated_data.send(
                 create_annotated_table(self.data, []))
+            self.info.set_output_summary(self.info.NoOutput)
             return
         filters = []
         self.Warning.no_cont_selection_sql.clear()
@@ -537,6 +546,10 @@ class OWMosaicDisplay(OWWidget):
         sel_idx = [i for i, id in enumerate(self.data.ids) if id in idset]
         if self.discrete_data is not self.data:
             selection = self.data[sel_idx]
+
+        summary = len(selection) if selection else self.info.NoOutput
+        details = format_summary_details(selection) if selection else ""
+        self.info.set_output_summary(summary, details)
         self.Outputs.selected_data.send(selection)
         self.Outputs.annotated_data.send(
             create_annotated_table(self.data, sel_idx))
@@ -992,5 +1005,5 @@ def get_conditional_distribution(data, attrs):
 
 
 if __name__ == "__main__":  # pragma: no cover
-    data = Table("zoo")
-    WidgetPreview(OWMosaicDisplay).run(data, set_subset_data=data[::10])
+    dataset = Table("zoo")
+    WidgetPreview(OWMosaicDisplay).run(dataset, set_subset_data=dataset[::10])

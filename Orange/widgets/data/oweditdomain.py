@@ -680,7 +680,8 @@ class GroupItemsDialog(QDialog):
     DEFAULT_LABEL = "other"
 
     def __init__(
-            self, variable: Categorical, data: Union[np.ndarray, List],
+            self, variable: Categorical,
+            data: Union[np.ndarray, List, MArray],
             selected_attributes: List[str], dialog_settings: Dict[str, Any],
             parent: QWidget = None, flags: Qt.WindowFlags = Qt.Dialog, **kwargs
     ) -> None:
@@ -814,10 +815,18 @@ class GroupItemsDialog(QDialog):
         -------
         List of attributes' to be merged names
         """
-        counts = Counter(self.data)
         if self.selected_radio.isChecked():
             return self.selected_attributes
-        elif self.n_values_radio.isChecked():
+
+        if isinstance(self.data, MArray):
+            non_nan = self.data[~self.data.mask]
+        elif isinstance(self.data, np.ndarray):
+            non_nan = self.data[~np.isnan(self.data)]
+        else:  # list
+            non_nan = [x for x in self.data if x is not None]
+
+        counts = Counter(non_nan)
+        if self.n_values_radio.isChecked():
             keep_values = self.n_values_spin.value()
             values = counts.most_common()[keep_values:]
             indices = [i for i, _ in values]
@@ -828,6 +837,8 @@ class GroupItemsDialog(QDialog):
             n_all = sum(counts.values())
             indices = [v for v, c in counts.most_common()
                        if c / n_all * 100 < self.frequent_rel_spin.value()]
+
+        indices = np.array(indices, dtype=int)  # indices must be ints
         return np.array(self.variable.categories)[indices].tolist()
 
     def get_merged_value_name(self) -> str:
@@ -2527,8 +2538,16 @@ def make_dict_mapper(
 def time_parse(values: Sequence[str], name="__"):
     tvar = Orange.data.TimeVariable(name)
     parse_time = ftry(tvar.parse, ValueError, np.nan)
-    values = [parse_time(v) for v in values]
-    return tvar, values
+    _values = [parse_time(v) for v in values]
+    if np.all(np.isnan(_values)):
+        # try parsing it with pandas (like in transform)
+        dti = pd.to_datetime(values, errors="coerce")
+        _values = datetime_to_epoch(dti)
+        date_only = getattr(dti, "_is_dates_only", False)
+        if np.all(dti != pd.NaT):
+            tvar.have_date = True
+            tvar.have_time = not date_only
+    return tvar, _values
 
 
 as_string = np.frompyfunc(str, 1, 1)
@@ -2734,17 +2753,23 @@ class ToContinuousTransform(Transformation):
             raise TypeError
 
 
+def datetime_to_epoch(dti: pd.DatetimeIndex) -> np.ndarray:
+    """Convert datetime to epoch"""
+    data = dti.values.astype("M8[us]")
+    mask = np.isnat(data)
+    data = data.astype(float) / 1e6
+    data[mask] = np.nan
+    return data
+
+
 class ReparseTimeTransform(Transformation):
     """
     Re-parse the column's string repr as datetime.
     """
     def transform(self, c):
         c = column_str_repr(self.variable, c)
-        c = pd.to_datetime(c, errors="coerce").values.astype("M8[us]")
-        mask = np.isnat(c)
-        orangecol = c.astype(float) / 1e6
-        orangecol[mask] = np.nan
-        return orangecol
+        c = pd.to_datetime(c, errors="coerce")
+        return datetime_to_epoch(c)
 
 
 class LookupMappingTransform(Transformation):

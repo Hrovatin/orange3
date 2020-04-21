@@ -9,6 +9,7 @@ from AnyQt.QtGui import QImage, QColor, QIcon
 from orangewidget.tests.base import GuiTest
 from Orange.util import color_to_hex
 from Orange.data import DiscreteVariable, ContinuousVariable, Variable
+from Orange.preprocess.discretize import decimal_binnings
 # pylint: disable=wildcard-import,unused-wildcard-import
 from Orange.widgets.utils.colorpalettes import *
 
@@ -142,29 +143,42 @@ class DiscretePaletteTest(unittest.TestCase):
 
 
 class LimitedDiscretePaletteTest(unittest.TestCase):
-    def test_small_palettes(self):
+    @staticmethod
+    def test_small_palettes():
+        defcols = len(DefaultRGBColors.palette)
+
         palette = LimitedDiscretePalette(3)
         np.testing.assert_equal(palette.palette, DefaultRGBColors.palette[:3])
 
-        palette = LimitedDiscretePalette(len(DefaultRGBColors.palette))
+        palette = LimitedDiscretePalette(defcols)
         np.testing.assert_equal(palette.palette, DefaultRGBColors.palette)
 
-        palette = LimitedDiscretePalette(len(DefaultRGBColors.palette) + 1)
-        self.assertFalse(np.all(np.array(palette.palette[:-1])
-                                == np.array(DefaultRGBColors.palette)))
-
-    def test_large_palettes(self):
-        n = len(DefaultRGBColors.palette) + 1
-        palette = LimitedDiscretePalette(n)
-        self.assertEqual(len({tuple(col) for col in palette.palette}), n)
+        palette = LimitedDiscretePalette(defcols + 1)
+        np.testing.assert_equal(palette.palette, Glasbey.palette[:defcols + 1])
 
         palette = LimitedDiscretePalette(100)
-        self.assertEqual(len({tuple(col) for col in palette.palette}), 100)
+        np.testing.assert_equal(palette.palette, Glasbey.palette[:100])
 
-    def test_forced_hsv_palettes(self):
-        palette = LimitedDiscretePalette(5, force_hsv=True)
-        self.assertFalse(np.all(np.array(palette.palette)
-                                == np.array(DefaultRGBColors.palette[:5])))
+    @staticmethod
+    def test_forced_glasbey_palettes():
+        palette = LimitedDiscretePalette(5, force_glasbey=True)
+        np.testing.assert_equal(palette.palette, Glasbey.palette[:5])
+
+    def test_deprecate_force_hsv_palettes(self):
+        with self.assertWarns(DeprecationWarning):
+            palette = LimitedDiscretePalette(3, force_hsv=False)
+            np.testing.assert_equal(palette.palette,
+                                    DefaultRGBColors.palette[:3])
+
+        with self.assertWarns(DeprecationWarning):
+            palette = LimitedDiscretePalette(5, force_hsv=True)
+            np.testing.assert_equal(palette.palette, Glasbey.palette[:5])
+
+
+class HuePaletteTest(unittest.TestCase):
+    def test_n_colors(self):
+        palette = HuePalette(42)
+        self.assertEqual(len(palette), 42)
 
 
 class ContinuousPaletteTest(GuiTest):
@@ -464,6 +478,14 @@ class BinnedPaletteTest(unittest.TestCase):
         copy.bins[0] += 1
         self.assertNotEqual(self.bins[0], copy.bins[0])
 
+    def test_decimal_binnings(self):
+        """test for consistency with binning from discretize"""
+        data = np.array([1, 2])
+        bins = decimal_binnings(data)[0].thresholds
+        binned = BinnedContinuousPalette.from_palette(self.palette, bins)
+        colors = binned.values_to_colors(data)
+        assert not np.array_equal(colors[0], colors[1])
+
 
 class UtilsTest(GuiTest):
     def test_coloricon(self):
@@ -641,7 +663,8 @@ class PatchedDiscreteVariableTest(unittest.TestCase):
         palette = var.palette
         np.testing.assert_equal(palette.palette, [[10, 11, 12], [13, 14, 15]])
 
-    def test_ignore_malfformed_atrtibutes(self):
+    @staticmethod
+    def test_ignore_malfformed_atrtibutes():
         var = DiscreteVariable("a", values=("M", "F"))
         var.attributes["colors"] = {"F": "foo", "M": "bar"}
         palette = var.palette

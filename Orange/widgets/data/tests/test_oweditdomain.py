@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 from numpy.testing import assert_array_equal
+import pandas as pd
 
 from AnyQt.QtCore import QItemSelectionModel, Qt, QItemSelection
 from AnyQt.QtWidgets import QAction, QComboBox, QLineEdit, \
@@ -33,7 +34,7 @@ from Orange.widgets.data.oweditdomain import (
     table_column_data, ReinterpretVariableEditor, CategoricalVector,
     VariableEditDelegate, TransformRole,
     RealVector, TimeVector, StringVector, make_dict_mapper, DictMissingConst,
-    LookupMappingTransform, as_float_or_nan, column_str_repr,
+    LookupMappingTransform, as_float_or_nan, column_str_repr, time_parse,
     GroupItemsDialog)
 from Orange.widgets.data.owcolor import OWColor, ColorRole
 from Orange.widgets.tests.base import WidgetTest, GuiTest
@@ -917,6 +918,19 @@ class TestUtils(TestCase):
         d = column_str_repr(v, np.array([0., np.nan, 1.0]))
         assert_array_equal(d, ["00:00:00", "?", "00:00:01"])
 
+    def test_time_parse(self):
+        """parsing additional datetimes by pandas"""
+        date = ["1/22/20", "1/23/20", "1/24/20"]
+        # we use privet method, check if still exists
+        assert hasattr(pd.DatetimeIndex, '_is_dates_only')
+
+        tval, values = time_parse(date)
+
+        self.assertTrue(tval.have_date)
+        self.assertFalse(tval.have_time)
+        self.assertListEqual(list(values),
+                             [1579651200.0, 1579737600.0, 1579824000.0])
+
 
 class TestLookupMappingTransform(TestCase):
     def setUp(self) -> None:
@@ -1011,6 +1025,40 @@ class TestGroupLessFrequentItemsDialog(GuiTest):
 
         dialog.n_values_spin.setValue(3)
         self.assertListEqual(dialog.get_merge_attributes(), [])
+
+    def test_group_less_frequent_missing(self):
+        """
+        Widget gives MaskedArray to GroupItemsDialog which can have missing
+        values.
+        gh-4599
+        """
+        def _test_correctness():
+            dialog.frequent_abs_radio.setChecked(True)
+            dialog.frequent_abs_spin.setValue(3)
+            self.assertListEqual(dialog.get_merge_attributes(), ["b", "c"])
+
+            dialog.frequent_rel_radio.setChecked(True)
+            dialog.frequent_rel_spin.setValue(50)
+            self.assertListEqual(dialog.get_merge_attributes(), ["b", "c"])
+
+            dialog.n_values_radio.setChecked(True)
+            dialog.n_values_spin.setValue(1)
+            self.assertListEqual(dialog.get_merge_attributes(), ["b", "c"])
+
+        # masked array
+        data_masked = np.ma.array(
+            [0, 0, np.nan, 0, 1, 1, 2], mask=[0, 0, 1, 0, 0, 0, 0]
+        )
+        dialog = GroupItemsDialog(self.v, data_masked, [], {})
+        _test_correctness()
+
+        data_array = np.array([0, 0, np.nan, 0, 1, 1, 2])
+        dialog = GroupItemsDialog(self.v, data_array, [], {})
+        _test_correctness()
+
+        data_list = [0, 0, None, 0, 1, 1, 2]
+        dialog = GroupItemsDialog(self.v, data_list, [], {})
+        _test_correctness()
 
 
 if __name__ == '__main__':

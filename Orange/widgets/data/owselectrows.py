@@ -13,6 +13,7 @@ from AnyQt.QtGui import (
     QFontMetrics, QPalette
 )
 from AnyQt.QtCore import Qt, QPoint, QRegExp, QPersistentModelIndex, QLocale
+from orangewidget.utils.combobox import ComboBoxSearch
 
 from Orange.data import (
     Variable, ContinuousVariable, DiscreteVariable, StringVariable,
@@ -77,7 +78,7 @@ class SelectRowsContextHandler(DomainContextHandler):
          #   return self.PERFECT_MATCH
 
         conditions = context.values["conditions"]
-        all_vars = attrs
+        all_vars = attrs.copy()
         all_vars.update(metas)
         # Use this after 2022/2/2:
         # if all(all_vars.get(name) == tpe for name, tpe, *_ in conditions):
@@ -247,7 +248,7 @@ class OWSelectRows(widget.OWWidget):
         row = model.rowCount()
         model.insertRow(row)
 
-        attr_combo = gui.OrangeComboBox(
+        attr_combo = ComboBoxSearch(
             minimumContentsLength=12,
             sizeAdjustPolicy=QComboBox.AdjustToMinimumContentsLengthWithIcon)
         attr_combo.row = row
@@ -428,7 +429,7 @@ class OWSelectRows(widget.OWWidget):
                 button.var_type = vtype
                 self.cond_list.setCellWidget(oper_combo.row, 2, button)
             else:
-                combo = QComboBox()
+                combo = ComboBoxSearch()
                 combo.addItems(("", ) + var.values)
                 if lc[0]:
                     combo.setCurrentIndex(int(lc[0]))
