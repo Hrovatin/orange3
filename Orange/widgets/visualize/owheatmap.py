@@ -16,16 +16,16 @@ from AnyQt.QtGui import QStandardItemModel, QStandardItem, QFont, QKeySequence
 from AnyQt.QtCore import Qt, QSize, QRectF, QObject
 
 from orangewidget.utils.combobox import ComboBox, ComboBoxSearch
-from Orange.data import Domain, Table, Variable, DiscreteVariable
+from Orange.data import Domain, Table, Variable
 from Orange.data.sql.table import SqlTable
 import Orange.distance
 
 from Orange.clustering import hierarchical, kmeans
-from Orange.widgets.utils import colorpalettes, apply_all
+from Orange.widgets.utils import colorpalettes, apply_all, itemmodels
 from Orange.widgets.utils.itemmodels import DomainModel
 from Orange.widgets.utils.stickygraphicsview import StickyGraphicsView
 from Orange.widgets.utils.graphicsview import GraphicsWidgetView
-from Orange.widgets.utils.colorpalettes import DiscretePalette, Palette
+from Orange.widgets.utils.colorpalettes import Palette
 
 from Orange.widgets.utils.annotated_data import (create_annotated_table,
                                                  ANNOTATED_DATA_SIGNAL_NAME)
@@ -35,6 +35,7 @@ from Orange.widgets.widget import Msg, Input, Output
 from Orange.widgets.data.oweditdomain import table_column_data
 from Orange.widgets.visualize.utils.heatmap import HeatmapGridWidget, \
     ColorMap, CategoricalColorMap, GradientColorMap
+from Orange.widgets.utils.colorgradientselection import ColorGradientSelection
 from Orange.widgets.utils.widgetpreview import WidgetPreview
 from Orange.widgets.utils.state_summary import format_summary_details
 
@@ -240,28 +241,23 @@ class OWHeatMap(widget.OWWidget):
 
         # GUI definition
         colorbox = gui.vBox(self.controlArea, "Color")
-        self.color_cb = gui.palette_combo_box(self.palette_name)
-        self.color_cb.currentIndexChanged.connect(self.update_color_schema)
-        colorbox.layout().addWidget(self.color_cb)
 
-        form = QFormLayout(
-            formAlignment=Qt.AlignLeft,
-            labelAlignment=Qt.AlignLeft,
-            fieldGrowthPolicy=QFormLayout.AllNonFixedFieldsGrow
+        self.color_map_widget = cmw = ColorGradientSelection(
+            thresholds=(self.threshold_low, self.threshold_high),
         )
-        lowslider = gui.hSlider(
-            colorbox, self, "threshold_low", minValue=0.0, maxValue=1.0,
-            step=0.05, ticks=True, intOnly=False,
-            createLabel=False, callback=self.update_lowslider)
-        highslider = gui.hSlider(
-            colorbox, self, "threshold_high", minValue=0.0, maxValue=1.0,
-            step=0.05, ticks=True, intOnly=False,
-            createLabel=False, callback=self.update_highslider)
+        model = itemmodels.ContinuousPalettesModel(parent=self)
+        cmw.setModel(model)
+        idx = cmw.findData(self.palette_name, model.KeyRole)
+        if idx != -1:
+            cmw.setCurrentIndex(idx)
 
-        form.addRow("Low:", lowslider)
-        form.addRow("High:", highslider)
+        cmw.activated.connect(self.update_color_schema)
 
-        colorbox.layout().addLayout(form)
+        def _set_thresholds(low, high):
+            self.threshold_low, self.threshold_high = low, high
+            self.update_color_schema()
+        cmw.thresholdsChanged.connect(_set_thresholds)
+        colorbox.layout().addWidget(self.color_map_widget)
 
         mergebox = gui.vBox(self.controlArea, "Merge",)
         gui.checkBox(mergebox, self, "merge_kmeans", "Merge by k-means",
@@ -417,7 +413,7 @@ class OWHeatMap(widget.OWWidget):
 
     @property
     def center_palette(self):
-        palette = self.color_cb.currentData()
+        palette = self.color_map_widget.currentData()
         return bool(palette.flags & palette.Diverging)
 
     @property
@@ -448,7 +444,7 @@ class OWHeatMap(widget.OWWidget):
         return super().sizeHint().expandedTo(QSize(900, 700))
 
     def color_palette(self):
-        return self.color_cb.currentData().lookup_table()
+        return self.color_map_widget.currentData().lookup_table()
 
     def color_map(self) -> GradientColorMap:
         return GradientColorMap(
@@ -617,9 +613,15 @@ class OWHeatMap(widget.OWWidget):
             _col_data = table_column_data(data, group_var)
             row_indices = [np.flatnonzero(_col_data == i)
                            for i in range(len(group_var.values))]
+
             row_groups = [RowPart(title=name, indices=ind,
                                   cluster=None, cluster_ordered=None)
                           for name, ind in zip(group_var.values, row_indices)]
+            if np.any(_col_data.mask):
+                row_groups.append(RowPart(
+                    title="N/A", indices=np.flatnonzero(_col_data.mask),
+                    cluster=None, cluster_ordered=None
+                ))
         else:
             row_groups = [RowPart(title=None, indices=range(0, len(data)),
                                   cluster=None, cluster_ordered=None)]
@@ -911,20 +913,8 @@ class OWHeatMap(widget.OWWidget):
         if widget is not None:
             widget.setShowAverages(self.averages)
 
-    def update_lowslider(self):
-        low, high = self.controls.threshold_low, self.controls.threshold_high
-        if low.value() >= high.value():
-            low.setSliderPosition(high.value() - 1)
-        self.update_color_schema()
-
-    def update_highslider(self):
-        low, high = self.controls.threshold_low, self.controls.threshold_high
-        if low.value() >= high.value():
-            high.setSliderPosition(low.value() + 1)
-        self.update_color_schema()
-
     def update_color_schema(self):
-        self.palette_name = self.color_cb.currentData().name
+        self.palette_name = self.color_map_widget.currentData().name
         w = self.scene.widget
         if w is not None:
             w.setColorMap(self.color_map())
@@ -984,12 +974,14 @@ class OWHeatMap(widget.OWWidget):
         if var is None:
             return None
         column_data = column_data_from_table(self.input_data, var)
-        span = (np.nanmin(column_data), np.nanmax(column_data))
         merges = self._merge_row_indices()
         if merges is not None:
             column_data = aggregate(var, column_data, merges)
         data, colormap = self._colorize(var, column_data)
         if var.is_continuous:
+            span = (np.nanmin(column_data), np.nanmax(column_data))
+            if np.any(np.isnan(span)):
+                span = 0., 1.
             colormap.span = span
         return data, colormap, var
 

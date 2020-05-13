@@ -33,6 +33,7 @@ class TestOWHeatMap(WidgetTest, WidgetOutputsTestMixin):
 
         cls.housing = Table("housing")
         cls.titanic = Table("titanic")
+        cls.brown_selected = Table("brown-selected")
 
         cls.signal_name = "Data"
         cls.signal_data = cls.data
@@ -123,15 +124,6 @@ class TestOWHeatMap(WidgetTest, WidgetOutputsTestMixin):
             self.assertFalse(msg.not_enough_instances.is_shown())
             self.assertFalse(msg.not_enough_instances_k_means.is_shown())
 
-    def test_color_low_high(self):
-        """
-        Prevent horizontal sliders to set Low >= High.
-        GH-2025
-        """
-        self.widget.controls.threshold_low.setValue(4)
-        self.widget.controls.threshold_high.setValue(2)
-        self.assertGreater(self.widget.threshold_high, self.widget.threshold_low)
-
     def test_data_column_nans(self):
         """
         Send data with one column with all values set to NaN.
@@ -211,7 +203,7 @@ class TestOWHeatMap(WidgetTest, WidgetOutputsTestMixin):
         self.assertEqual(len(self.get_output(w.Outputs.selected_data)), 21)
 
     def test_set_split_var(self):
-        data = Table("brown-selected")
+        data = self.brown_selected[::3]
         w = self.widget
         self.send_signal(self.widget.Inputs.data, data, widget=w)
         self.assertIs(w.split_by_var, data.domain.class_var)
@@ -220,6 +212,15 @@ class TestOWHeatMap(WidgetTest, WidgetOutputsTestMixin):
         w.set_split_variable(None)
         self.assertIs(w.split_by_var, None)
         self.assertEqual(len(w.parts.rows), 1)
+
+    def test_set_split_var_missing(self):
+        data = self.brown_selected[::3].copy()
+        data.Y[::5] = np.nan
+        w = self.widget
+        self.send_signal(self.widget.Inputs.data, data, widget=w)
+        self.assertIs(w.split_by_var, data.domain.class_var)
+        self.assertEqual(len(w.parts.rows),
+                         len(data.domain.class_var.values) + 1)
 
     def test_palette_centering(self):
         data = np.arange(2).reshape(-1, 1)
@@ -246,12 +247,12 @@ class TestOWHeatMap(WidgetTest, WidgetOutputsTestMixin):
 
     def test_palette_center(self):
         widget = self.widget
-        model = widget.color_cb.model()
+        model = widget.color_map_widget.model()
         for idx in range(model.rowCount(QModelIndex())):
             palette = model.data(model.index(idx, 0), Qt.UserRole)
             if palette is None:
                 continue
-            widget.color_cb.setCurrentIndex(idx)
+            widget.color_map_widget.setCurrentIndex(idx)
             self.assertEqual(widget.center_palette,
                              bool(palette.flags & palette.Diverging))
 
@@ -267,10 +268,30 @@ class TestOWHeatMap(WidgetTest, WidgetOutputsTestMixin):
 
     def test_row_color_annotations(self):
         widget = self.widget
-        data = Table("brown-selected")[::5]
+        data = self.brown_selected[::5]
         self.send_signal(widget.Inputs.data, data, widget=widget)
         widget.set_annotation_color_var(data.domain["function"])
         self.assertTrue(widget.scene.widget.right_side_colors[0].isVisible())
+        widget.set_annotation_color_var(None)
+        self.assertFalse(widget.scene.widget.right_side_colors[0].isVisible())
+
+    def test_row_color_annotations_with_na(self):
+        widget = self.widget
+        data = self.brown_selected[::5]
+        data = data.transform(
+            Domain(data.domain.attributes[:10], data.domain.class_vars,
+                   data.domain.metas + (data.domain["diau g"], )))
+        data.Y[:3] = np.nan
+        data.metas[:3, -1] = np.nan
+        self.send_signal(widget.Inputs.data, data, widget=widget)
+        widget.set_annotation_color_var(data.domain["function"])
+        self.assertTrue(widget.scene.widget.right_side_colors[0].isVisible())
+        widget.set_annotation_color_var(data.domain["diau g"])
+        data.Y[:] = np.nan
+        data.metas[:, -1] = np.nan
+        self.send_signal(widget.Inputs.data, data, widget=widget)
+        widget.set_annotation_color_var(data.domain["function"])
+        widget.set_annotation_color_var(data.domain["diau g"])
         widget.set_annotation_color_var(None)
         self.assertFalse(widget.scene.widget.right_side_colors[0].isVisible())
 
