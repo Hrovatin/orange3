@@ -9,7 +9,8 @@ from AnyQt.QtCore import Qt
 from AnyQt.QtTest import QTest
 import baycomp
 
-from Orange.classification import MajorityLearner, LogisticRegressionLearner
+from Orange.classification import MajorityLearner, LogisticRegressionLearner, \
+    RandomForestLearner
 from Orange.classification.majority import ConstantModel
 from Orange.data import Table, Domain, DiscreteVariable, ContinuousVariable
 from Orange.evaluation import Results, TestOnTestData, scoring
@@ -24,7 +25,7 @@ from Orange.widgets.evaluate.utils import BUILTIN_SCORERS_ORDER
 from Orange.widgets.settings import (
     ClassValuesContextHandler, PerfectDomainContextHandler)
 from Orange.widgets.tests.base import WidgetTest
-from Orange.widgets.tests.utils import simulate
+from Orange.widgets.tests.utils import simulate, possible_duplicate_table
 from Orange.widgets.utils.state_summary import (format_summary_details,
                                                 format_multiple_summaries)
 from Orange.tests import test_filename
@@ -381,26 +382,33 @@ class TestOWTestAndScore(WidgetTest):
         table_test = Table.from_list(
             self.scores_domain,
             list(zip(*(self.scores_table_values + [list("yynn")]))))
-        self.assertTupleEqual(self._test_scores(
-            table_train, table_test, LogisticRegressionLearner(),
-            OWTestAndScore.TestOnTest, None),
-                              (0, 0, 0, 0, 0))
+
+        lr = LogisticRegressionLearner()
+        np.testing.assert_almost_equal(
+            self._test_scores(
+                table_train, table_test, lr, OWTestAndScore.TestOnTest, None
+            ),
+            (0, 0.25, 0.2, 0.1666666, 0.25),
+        )
 
     def test_scores_log_reg_advanced(self):
         table_train = Table.from_list(
-            self.scores_domain, list(zip(
-                [1, 1, 1.23, 23.8, 5.], [1., 2., 3., 4., 3.], "yyynn"))
+            self.scores_domain,
+            list(zip([1, 1, 1.23, 23.8, 5.], [1., 2., 3., 4., 3.], "yyynn"))
         )
         table_test = Table.from_list(
-            self.scores_domain, list(zip(
-                [1, 1, 1.23, 23.8, 5.], [1., 2., 3., 4., 3.], "yynnn"))
+            self.scores_domain,
+            list(zip([1, 1, 1.23, 23.8, 5.], [1., 2., 3., 4., 3.], "yynnn"))
         )
 
+        lr = LogisticRegressionLearner()
+        np.testing.assert_
         np.testing.assert_almost_equal(
-            self._test_scores(table_train, table_test,
-                              LogisticRegressionLearner(),
-                              OWTestAndScore.TestOnTest, None),
-            (2 / 3, 0.8, 0.8, 13 / 15, 0.8))
+            self._test_scores(
+                table_train, table_test, lr, OWTestAndScore.TestOnTest, None
+            ),
+            (1, 0.8, 0.8, 13 / 15, 0.8)
+        )
 
     def test_scores_cross_validation(self):
         """
@@ -677,6 +685,14 @@ class TestOWTestAndScore(WidgetTest):
         self.assertEqual(info._StateInfo__input_summary.details, no_input)
         self.assertEqual(info._StateInfo__output_summary.brief, "")
         self.assertEqual(info._StateInfo__output_summary.details, no_output)
+
+    def test_unique_output_domain(self):
+        data = possible_duplicate_table('random forest')
+        self.send_signal(self.widget.Inputs.train_data, data)
+        self.send_signal(self.widget.Inputs.learner, RandomForestLearner(), 0)
+        output = self.get_output(self.widget.Outputs.predictions)
+        self.assertEqual(output.domain.metas[0].name, 'random forest (1)')
+
 
 class TestHelpers(unittest.TestCase):
     def test_results_one_vs_rest(self):
