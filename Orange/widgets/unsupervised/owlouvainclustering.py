@@ -42,7 +42,7 @@ _MAX_K_NEIGBOURS = 200
 _DEFAULT_K_NEIGHBORS = 30
 
 
-METRICS = [("Euclidean", "l2"), ("Manhattan", "l1"),("Cosine", "cosine")]
+METRICS = [("Euclidean", "l2"), ("Manhattan", "l1")]
 
 
 class OWLouvainClustering(widget.OWWidget):
