@@ -71,23 +71,23 @@ rgb = [
 
 # Ordered discrete variable variations
 ints_full = VarDataPair(
-    DiscreteVariable('ints_full', values=('2', '3', '4'), ordered=True),
+    DiscreteVariable('ints_full', values=('2', '3', '4')),
     np.array([0, 1, 1, 1, 2], dtype=float),
 )
 ints_missing = VarDataPair(
-    DiscreteVariable('ints_missing', values=('2', '3', '4'), ordered=True),
+    DiscreteVariable('ints_missing', values=('2', '3', '4')),
     np.array([0, 1, 1, np.nan, 2], dtype=float),
 )
 ints_all_missing = VarDataPair(
-    DiscreteVariable('ints_all_missing', values=('2', '3', '4'), ordered=True),
+    DiscreteVariable('ints_all_missing', values=('2', '3', '4')),
     np.array([np.nan] * 5, dtype=float),
 )
 ints_bins_missing = VarDataPair(
-    DiscreteVariable('ints_bins_missing', values=('2', '3', '4'), ordered=True),
+    DiscreteVariable('ints_bins_missing', values=('2', '3', '4')),
     np.array([np.nan, 1, 1, 1, np.nan], dtype=float),
 )
 ints_same = VarDataPair(
-    DiscreteVariable('ints_same', values=('2', '3', '4'), ordered=True),
+    DiscreteVariable('ints_same', values=('2', '3', '4')),
     np.array([0] * 5, dtype=float),
 )
 ints = [
@@ -492,6 +492,15 @@ class TestFeatureStatisticsUI(WidgetTest):
         domain = self.data1.domain
         self.assertEqual(widget.selected_vars, [domain["petal width"],
                                                 domain["iris"]])
+
+    def test_report(self):
+        self.send_signal(self.widget.Inputs.data, self.data1)
+
+        self.widget.report_button.click()
+        report_text = self.widget.report_html
+
+        self.assertIn("<table>", report_text)
+        self.assertEqual(6, report_text.count("<tr>"))  # header + 5 rows
 
 
 class TestSummary(WidgetTest):

@@ -347,34 +347,26 @@ class Variable(Reprable, metaclass=VariableMeta):
         return var
 
     def __eq__(self, other):
-        # pylint: disable=protected-access,import-outside-toplevel
+        if type(self) is not type(other):
+            return False
 
-        def to_match(var):
-            if var._compute_value is None:
-                return var
-            elif isinstance(var._compute_value, Identity):
-                return var._compute_value.variable
-            return None
-
-        from Orange.preprocess.transformation import Identity
-        return type(self) is type(other) and (
-            self.name == other.name
-            and self._compute_value == other._compute_value
-            or
-            (self.compute_value or other.compute_value)
-            and to_match(self) == to_match(other) != None)
+        var1 = self._get_identical_source(self)
+        var2 = self._get_identical_source(other)
+        # pylint: disable=protected-access
+        return var1.name == var2.name \
+               and var1._compute_value == var2._compute_value
 
     def __hash__(self):
-        # Two variables that are not equal can have the same hash.
-        # This happens if one has compute_value == Identity and the other
-        # doesn't have compute_value, or they have a different Identity.
-        # Having the same hash while not being equal is of course allowed.
-        # pylint: disable=import-outside-toplevel
+        var = self._get_identical_source(self)
+        return hash((var.name, type(self), var._compute_value))
+
+    @staticmethod
+    def _get_identical_source(var):
+        # pylint: disable=protected-access,import-outside-toplevel
         from Orange.preprocess.transformation import Identity
-        compute_value = self._compute_value
-        if isinstance(self._compute_value, Identity):
-            compute_value = None
-        return hash((self.name, type(self), compute_value))
+        while isinstance(var._compute_value, Identity):
+            var = var._compute_value.variable
+        return var
 
     @classmethod
     def make(cls, name, *args, **kwargs):
@@ -482,9 +474,13 @@ class Variable(Reprable, metaclass=VariableMeta):
         # Use make to unpickle variables.
         return make_variable, (self.__class__, self._compute_value, self.name), self.__dict__
 
-    def copy(self, compute_value=None, *, name=None, **kwargs):
+    _CopyComputeValue = object()
+
+    def copy(self, compute_value=_CopyComputeValue, *, name=None, **kwargs):
+        if compute_value is self._CopyComputeValue:
+            compute_value = self.compute_value
         var = type(self)(name=name or self.name,
-                         compute_value=compute_value or self.compute_value,
+                         compute_value=compute_value,
                          sparse=self.sparse, **kwargs)
         var.attributes = dict(self.attributes)
         return var
@@ -590,7 +586,8 @@ class ContinuousVariable(Variable):
 
     str_val = repr_val
 
-    def copy(self, compute_value=None, *, name=None, **kwargs):
+    def copy(self, compute_value=Variable._CopyComputeValue,
+             *, name=None, **kwargs):
         # pylint understand not that `var` is `DiscreteVariable`:
         # pylint: disable=protected-access
         number_of_decimals = kwargs.pop("number_of_decimals", None)
@@ -605,24 +602,6 @@ class ContinuousVariable(Variable):
         return var
 
 
-class TupleList(tuple):
-    def __add__(self, other):
-        if isinstance(other, list):
-            warnings.warn(
-                "DiscreteVariable.values is a tuple; "
-                "support for adding a list will be dropped in Orange 3.27",
-                DeprecationWarning)
-            return list(self) + other
-        return super().__add__(other)
-
-    def copy(self):
-        warnings.warn(
-            "DiscreteVariable.values is a tuple;"
-            "method copy will be dropped in Orange 3.27",
-            DeprecationWarning)
-        return list(self)
-
-
 class DiscreteVariable(Variable):
     """
     Descriptor for symbolic, discrete variables. Values of discrete variables
@@ -632,30 +611,41 @@ class DiscreteVariable(Variable):
     .. attribute:: values
 
         A list of variable's values.
-
-    .. attribute:: ordered
-
-        Some algorithms (and, in particular, visualizations) may
-        sometime reorder the values of the variable, e.g. alphabetically.
-        This flag hints that the given order of values is "natural"
-        (e.g. "small", "middle", "large") and should not be changed.
     """
 
     TYPE_HEADERS = ('discrete', 'd', 'categorical')
 
     presorted_values = []
 
-    def __init__(self, name="", values=(), ordered=False, compute_value=None,
-                 *, sparse=False):
+    def __init__(
+            self, name="", values=(), ordered=None, compute_value=None,
+            *, sparse=False
+    ):
         """ Construct a discrete variable descriptor with the given values. """
-        values = TupleList(values)  # some people (including me) pass a generator
+        values = tuple(values)  # some people (including me) pass a generator
         if not all(isinstance(value, str) for value in values):
             raise TypeError("values of DiscreteVariables must be strings")
 
         super().__init__(name, compute_value, sparse=sparse)
         self._values = values
         self._value_index = {value: i for i, value in enumerate(values)}
-        self.ordered = ordered
+
+        if ordered is not None:
+            warnings.warn(
+                "ordered is deprecated and does not have effect. It will be "
+                "removed in future versions.",
+                OrangeDeprecationWarning
+            )
+
+    @property
+    def ordered(self):
+        warnings.warn(
+            "ordered is deprecated. It will be removed in future versions.",
+            # FutureWarning warning is used instead of OrangeDeprecation
+            # warning otherwise tests fail (__repr__ still asks for ordered)
+            FutureWarning
+        )
+        return None
 
     @property
     def values(self):
@@ -822,17 +812,20 @@ class DiscreteVariable(Variable):
             raise PickleError("Variables without names cannot be pickled")
         __dict__ = dict(self.__dict__)
         __dict__.pop("_values")
-        return make_variable, (self.__class__, self._compute_value, self.name,
-                               self.values, self.ordered), \
+        return (
+            make_variable,
+            (self.__class__, self._compute_value, self.name, self.values),
             __dict__
+        )
 
-    def copy(self, compute_value=None, *, name=None, values=None, **_):
+    def copy(self, compute_value=Variable._CopyComputeValue,
+             *, name=None, values=None, **_):
         # pylint: disable=arguments-differ
         if values is not None and len(values) != len(self.values):
             raise ValueError(
                 "number of values must match the number of original values")
         return super().copy(compute_value=compute_value, name=name,
-                            values=values or self.values, ordered=self.ordered)
+                            values=values or self.values)
 
 
 class StringVariable(Variable):
@@ -956,7 +949,7 @@ class TimeVariable(ContinuousVariable):
         self.have_date = have_date
         self.have_time = have_time
 
-    def copy(self, compute_value=None, *, name=None, **_):
+    def copy(self, compute_value=Variable._CopyComputeValue, *, name=None, **_):
         return super().copy(compute_value=compute_value, name=name,
                             have_date=self.have_date, have_time=self.have_time)
 

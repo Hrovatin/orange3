@@ -8,7 +8,6 @@ import unittest
 import pickle
 import pkgutil
 from datetime import datetime, timezone
-from distutils.version import LooseVersion
 
 from io import StringIO
 
@@ -163,6 +162,7 @@ class TestVariable(unittest.TestCase):
         a._compute_value = Identity(a1)
         self.assertEqual(a, a)
         self.assertEqual(a, b)
+        self.assertEqual(hash(a), hash(b))
 
         b._compute_value = a.compute_value
         self.assertEqual(a, b)
@@ -205,6 +205,27 @@ class TestVariable(unittest.TestCase):
 
         b._compute_value = Identity(a2)
         self.assertEqual(hash(a), hash(b))
+
+        at = TimeVariable("a")
+        b = ContinuousVariable("b")
+        self.assertEqual(hash(a1), hash(a2))
+        self.assertNotEqual(hash(a1), hash(b))
+        self.assertNotEqual(hash(a1), hash(at))
+
+    def test_hash_eq(self):
+        a = ContinuousVariable("a")
+        b1 = ContinuousVariable("b", compute_value=Identity(a))
+        b2 = ContinuousVariable("b2", compute_value=Identity(b1))
+        b3 = ContinuousVariable("b")
+        self.assertEqual(a, b2)
+        self.assertEqual(b1, b2)
+        self.assertEqual(a, b1)
+        self.assertNotEqual(b1, b3)
+
+        self.assertEqual(hash(a), hash(b2))
+        self.assertEqual(hash(b1), hash(b2))
+        self.assertEqual(hash(a), hash(b1))
+        self.assertNotEqual(hash(b1), hash(b3))
 
 
 def variabletest(varcls):
@@ -252,21 +273,17 @@ class TestDiscreteVariable(VariableTest):
         self.assertEqual(var.val_from_str_add("F"), 0)
         self.assertEqual(var.val_from_str_add("N"), 2)
 
-
     def test_repr(self):
         var = DiscreteVariable.make("a", values=("F", "M"))
         self.assertEqual(
             repr(var),
             "DiscreteVariable(name='a', values=('F', 'M'))")
-        var.ordered = True
-        self.assertEqual(
-            repr(var),
-            "DiscreteVariable(name='a', values=('F', 'M'), ordered=True)")
 
         var = DiscreteVariable.make("a", values="1234567")
         self.assertEqual(
             repr(var),
-            "DiscreteVariable(name='a', values=('1', '2', '3', '4', '5', '6', '7'))")
+            "DiscreteVariable(name='a', values=('1', '2', '3', '4', '5', '6', '7'))"
+        )
 
     def test_no_nonstringvalues(self):
         self.assertRaises(TypeError, DiscreteVariable, "foo", values=("a", 42))
@@ -278,19 +295,6 @@ class TestDiscreteVariable(VariableTest):
         a.add_value("b")
         self.assertEqual(list(a.values), ["a", "b", "c"])
         self.assertEqual(list(a._value_index), ["a", "b", "c"])
-
-    def test_tuple_list_warning(self):
-        if LooseVersion(Orange.version.short_version) >= LooseVersion("3.27"):
-            self.fail("Remove class TupleList; replace it with tuple.")
-
-        d1 = DiscreteVariable("A", values=("one", "two"))
-        with self.assertWarns(DeprecationWarning):
-            val = d1.values + ["three", ]
-        self.assertEqual(val, ["one", "two", "three"])
-        with self.assertWarns(DeprecationWarning):
-            val = d1.values.copy()
-        self.assertIsInstance(val, list)
-        self.assertSequenceEqual(val, d1.values)
 
     def test_unpickle(self):
         d1 = DiscreteVariable("A", values=("two", "one"))
@@ -467,7 +471,6 @@ class TestDiscreteVariable(VariableTest):
         var = super().varcls_modified(name)
         var.add_value("A")
         var.add_value("B")
-        var.ordered = True
         return var
 
     def test_copy_checks_len_values(self):
@@ -486,6 +489,16 @@ class TestDiscreteVariable(VariableTest):
 
         var2 = var.copy(values=("W", "M"))
         self.assertEqual(var2.values, ("W", "M"))
+
+    def test_remove_ordered(self):
+        """
+        ordered is deprecated when this test starts to fail remove ordered
+        parameter. Remove also this test.
+        Ordered parameter should still be allowed in __init__ for backward
+        compatibilities in data-sets pickled with older versions, I suggest
+        adding **kwargs which is ignored
+        """
+        self.assertLess(Orange.__version__, "3.29.0")
 
 
 @variabletest(ContinuousVariable)
@@ -676,10 +689,7 @@ PickleDiscreteVariable = create_pickling_tests(
     "PickleDiscreteVariable",
     ("with_name", lambda: DiscreteVariable(name="Feature 0")),
     ("with_str_value", lambda: DiscreteVariable(name="Feature 0",
-                                                values=("F", "M"))),
-    ("ordered", lambda: DiscreteVariable(name="Feature 0",
-                                         values=("F", "M"),
-                                         ordered=True)),
+                                                values=("F", "M")))
 )
 
 
@@ -691,7 +701,7 @@ PickleStringVariable = create_pickling_tests(
 
 class VariableTestMakeProxy(unittest.TestCase):
     def test_make_proxy_disc(self):
-        abc = DiscreteVariable("abc", values="abc", ordered=True)
+        abc = DiscreteVariable("abc", values="abc")
         abc1 = abc.make_proxy()
         abc2 = abc1.make_proxy()
         self.assertEqual(abc, abc1)
@@ -700,7 +710,7 @@ class VariableTestMakeProxy(unittest.TestCase):
         self.assertEqual(hash(abc), hash(abc1))
         self.assertEqual(hash(abc1), hash(abc2))
 
-        abcx = DiscreteVariable("abc", values="abc", ordered=True)
+        abcx = DiscreteVariable("abc", values="abc")
         self.assertEqual(abc, abcx)
         self.assertIsNot(abc, abcx)
 

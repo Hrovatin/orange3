@@ -517,12 +517,10 @@ class FeatureStatisticsTableModel(AbstractSortTableModel):
                 else:
                     return render_value(self._dispersion[row])
             elif column == self.Columns.MIN:
-                if not isinstance(attribute, DiscreteVariable) \
-                        or attribute.ordered:
+                if not isinstance(attribute, DiscreteVariable):
                     return render_value(self._min[row])
             elif column == self.Columns.MAX:
-                if not isinstance(attribute, DiscreteVariable) \
-                        or attribute.ordered:
+                if not isinstance(attribute, DiscreteVariable):
                     return render_value(self._max[row])
             elif column == self.Columns.MISSING:
                 return '%d (%d%%)' % (
@@ -850,7 +848,8 @@ class OWFeatureStatistics(widget.OWWidget):
         self.Outputs.statistics.send(statistics)
 
     def send_report(self):
-        pass
+        view = self.table_view
+        self.report_table(view)
 
     @classmethod
     def migrate_context(cls, context, version):
